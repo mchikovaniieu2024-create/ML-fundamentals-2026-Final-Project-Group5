@@ -8,12 +8,11 @@ from data_utils import load_data, clean_data, get_split, build_pipeline
 def run_experience_experiments():
     """
     Experience-only experiment:
-    - uses Massimo's raw load + cleaning + split
+    - uses from preprocessing load + clean + split
+    - uses the shared 'experience' preprocessing pipeline
     - trains Logistic Regression and Random Forest
-    - keeps preprocessing inside the shared pipeline
     """
     df = clean_data(load_data())
-
     X_train, X_val, X_test, y_train, y_val, y_test = get_split(df)
 
     lr = build_pipeline(
@@ -33,22 +32,7 @@ def run_experience_experiments():
     lr.fit(X_train, y_train)
     rf.fit(X_train, y_train)
 
-    lr_val_pred = lr.predict(X_val)
-    lr_val_prob = lr.predict_proba(X_val)[:, 1]
-
-    rf_val_pred = rf.predict(X_val)
-    rf_val_prob = rf.predict_proba(X_val)[:, 1]
-
-    lr_test_pred = lr.predict(X_test)
-    lr_test_prob = lr.predict_proba(X_test)[:, 1]
-
-    rf_test_pred = rf.predict(X_test)
-    rf_test_prob = rf.predict_proba(X_test)[:, 1]
-
-    print("Experience-only models trained successfully.")
-    print("Logistic Regression and Random Forest are ready for evaluation.")
-
-    return {
+    results = {
         "splits": {
             "X_train": X_train,
             "X_val": X_val,
@@ -58,25 +42,32 @@ def run_experience_experiments():
             "y_test": y_test,
         },
         "models": {
-            "logistic_regression": lr,
-            "random_forest": rf,
+            "experience_lr": lr,
+            "experience_rf": rf,
         },
         "predictions": {
-            "logistic_regression": {
-                "val_pred": lr_val_pred,
-                "val_prob": lr_val_prob,
-                "test_pred": lr_test_pred,
-                "test_prob": lr_test_prob,
+            "experience_lr": {
+                "val_pred": lr.predict(X_val),
+                "val_prob": lr.predict_proba(X_val)[:, 1],
+                "test_pred": lr.predict(X_test),
+                "test_prob": lr.predict_proba(X_test)[:, 1],
             },
-            "random_forest": {
-                "val_pred": rf_val_pred,
-                "val_prob": rf_val_prob,
-                "test_pred": rf_test_pred,
-                "test_prob": rf_test_prob,
+            "experience_rf": {
+                "val_pred": rf.predict(X_val),
+                "val_prob": rf.predict_proba(X_val)[:, 1],
+                "test_pred": rf.predict(X_test),
+                "test_prob": rf.predict_proba(X_test)[:, 1],
             },
         },
     }
 
+    print("Experience models trained successfully.")
+    print("Ready for evaluation.")
+
+    return results
+
 
 if __name__ == "__main__":
-    run_experience_experiments()
+    results = run_experience_experiments()
+    for model_name, preds in results["predictions"].items():
+        print(model_name, list(preds.keys()))
