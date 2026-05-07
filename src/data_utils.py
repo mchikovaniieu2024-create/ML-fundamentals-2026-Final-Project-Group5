@@ -260,15 +260,48 @@ def _combined_preprocessor() -> ColumnTransformer:
         remainder="drop",
     )
 
+def _baseline_preprocessor() -> ColumnTransformer:
+    """
+    Preprocessor for the baseline model.
+    Combines education categoricals and experience numerics
+    """
+    ordinal_cols = ["EdLevel"]
+    onehot_cols = [c for c in EDUCATION_FEATURES
+                   if c in CATEGORICAL_COLS and c not in ordinal_cols]
+    numeric_cols = EXPERIENCE_FEATURES
 
+    return ColumnTransformer(
+        transformers=[
+            (
+                "ordinal",
+                OrdinalEncoder(
+                    categories=[EDLEVEL_ORDER],
+                    handle_unknown="use_encoded_value",
+                    unknown_value=-1,
+                ),
+                ordinal_cols,
+            ),
+            (
+                "scaler",
+                StandardScaler(),
+                numeric_cols,
+            ),
+            (
+                "onehot",
+                OneHotEncoder(handle_unknown="ignore", sparse_output=False),
+                onehot_cols,
+            ),
+        ],
+        remainder="drop",
+    )
 # Map group names to their preprocessor factory functions
 _PREPROCESSOR_MAP = {
     "education":  _education_preprocessor,
     "experience": _experience_preprocessor,
     "skills":     _skills_preprocessor,
     "combined":   _combined_preprocessor,
+    "baseline":   _baseline_preprocessor,
 }
-
 
 def build_pipeline(model, feature_group: str) -> Pipeline:
     """
