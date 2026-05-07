@@ -1,11 +1,13 @@
 import os
+from pathlib import Path
 
 # Paths
 # Root directory of the project
 ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
+BASE_DIR = Path(__file__).resolve().parent.parent
 
 # Path to the raw dataset
-DATA_PATH = os.path.join(ROOT_DIR, "..", "data", "stackoverflow_full.csv")
+DATA_PATH = BASE_DIR / "data" / "raw" / "stackoverflow_full.csv"
 
 # Directory where processed artefacts (e.g. split CSVs, encoders) are saved
 PROCESSED_DIR = os.path.join(ROOT_DIR, "processed")
