@@ -84,7 +84,7 @@ def clean_data(df: pd.DataFrame) -> pd.DataFrame:
 
 
     # 2c. Strip leading/trailing whitespace from all string columns
-    str_cols = df.select_dtypes(include="str").columns
+    str_cols = df.select_dtypes(include=["object", "string"]).columns
     for col in str_cols:
         df[col] = df[col].str.strip()
 
