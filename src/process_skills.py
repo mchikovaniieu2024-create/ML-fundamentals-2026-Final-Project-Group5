@@ -16,12 +16,6 @@ import pandas as pd
 # and expand meanings of abbreviations
 
 
-
-
-
-
-
-
 def normalize_skill(token: str) -> str:
 
 
