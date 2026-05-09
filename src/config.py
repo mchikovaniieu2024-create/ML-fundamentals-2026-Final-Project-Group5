@@ -68,6 +68,7 @@ EXPERIENCE_FEATURES = [
 # Skills features — technology stack
 SKILL_TEXT_COL = "HaveWorkedWith"      # raw semicolon-separated string
 SKILL_NUMERIC_COL = "ComputerSkills"   # count of distinct technologies
+SKILLS_FEATURES = [SKILL_TEXT_COL, SKILL_NUMERIC_COL]  # backwards compatibility
 
 
 # Categorical columns that need encoding in education and combined pipelines
