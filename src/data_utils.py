@@ -9,7 +9,9 @@ from sklearn.preprocessing import (
     OneHotEncoder,
     StandardScaler,
     LabelEncoder,
+    FunctionTransformer
 )
+
 from sklearn.impute import SimpleImputer
 
 from config import (
@@ -22,12 +24,21 @@ from config import (
     TEST_SIZE,
     EDUCATION_FEATURES,
     EXPERIENCE_FEATURES,
-    SKILL_TEXT_COL,
     SKILL_NUMERIC_COL,
+    SKILL_TEXT_COL,
     CATEGORICAL_COLS,
     NUMERIC_COLS,
     EDLEVEL_ORDER,
 )
+
+from feature_engineering import (
+    BinarySkillTransformer,
+    SkillCountTransformer,
+    GroupedSkillTransformer,
+    EmbeddingTransformer,
+)
+
+from scipy import sparse
 
 
 # Convenience mapping — teammates import this dict to get feature lists
@@ -65,24 +76,16 @@ def clean_data(df: pd.DataFrame) -> pd.DataFrame:
     """
     df = df.copy()
 
-
     # 2a. Drop leakage and index columns
     cols_to_drop = [c for c in DROP_COLS if c in df.columns]
     df.drop(columns=cols_to_drop, inplace=True)
     print(f"[clean_data] Dropped columns: {cols_to_drop}")
 
     # 2b. Missing value handling
-    # HaveWorkedWith has 63 nulls out of 73,462 rows, very low part.
-    # Strategy: fill with empty string so that the skills parser
-    # receives a consistent type.
-    # We do NOT impute with a mode because "no skills listed" is
-    # meaningfully different from having any skill at all.
-    # ------------------------------------------------------------------
     if "HaveWorkedWith" in df.columns:
         n_missing = df["HaveWorkedWith"].isna().sum()
         df["HaveWorkedWith"] = df["HaveWorkedWith"].fillna("")
         print(f"[clean_data] HaveWorkedWith: filled {n_missing} nulls with empty string")
-
 
     # 2c. Strip leading/trailing whitespace from all string columns
     str_cols = df.select_dtypes(include=["object", "string"]).columns
@@ -96,7 +99,6 @@ def clean_data(df: pd.DataFrame) -> pd.DataFrame:
 
     print(f"[clean_data] Done. Shape after cleaning: {df.shape}")
     return df
-
 
 
 # 3. SPLIT
@@ -114,8 +116,7 @@ def get_split(df: pd.DataFrame):
     The split is performed on the full cleaned dataframe before any
     encoding or scaling. Encoders are fitted only on the training set
     and applied to validation/test in build_pipeline(). This is the
-     way to avoid target/distribution leakage.
-
+    correct way to avoid target/distribution leakage.
     """
     X = df.drop(columns=[TARGET_COL])
     y = df[TARGET_COL]
@@ -204,23 +205,42 @@ def _experience_preprocessor() -> ColumnTransformer:
     )
 
 
-def _skills_preprocessor() -> ColumnTransformer:
+def _skills_preprocessor(kind: str = "embeddings"):
     """
     Preprocessor for skills-only features.
 
-    ComputerSkills (count) → StandardScaler.
-    We include ComputerSkills here as a simple numeric summary of skills depth.
+    Supports four representations:
+      - binary:     sparse binary indicator per skill
+      - counts:     total distinct skill count
+      - grouped:    technology group counts and binary flags
+      - embeddings: dense sentence embeddings via all-MiniLM-L6-v2
     """
-    return ColumnTransformer(
-        transformers=[
-            (
-                "scaler",
-                StandardScaler(),
-                ["ComputerSkills"],
-            ),
-        ],
-        remainder="drop",
-    )
+    if kind == "binary":
+        skill_tf = BinarySkillTransformer(min_freq=2)
+    elif kind == "counts":
+        skill_tf = SkillCountTransformer()
+    elif kind == "grouped":
+        skill_tf = GroupedSkillTransformer(mode="both")
+    elif kind == "embeddings":
+        skill_tf = EmbeddingTransformer()
+    else:
+        raise ValueError(f"Unknown skills kind: {kind}")
+
+    def _select_skill(X):
+        if isinstance(X, pd.DataFrame):
+            return X["HaveWorkedWith"]
+        return X
+
+    def _to_dense(X):
+        if sparse.issparse(X):
+            return X.toarray()
+        return X
+
+    return Pipeline([
+        ("select_skill",  FunctionTransformer(_select_skill, validate=False)),
+        ("skill_features", skill_tf),
+        ("to_dense",       FunctionTransformer(_to_dense, validate=False)),
+    ])
 
 
 def _combined_preprocessor() -> ColumnTransformer:
@@ -261,14 +281,15 @@ def _combined_preprocessor() -> ColumnTransformer:
         remainder="drop",
     )
 
+
 def _baseline_preprocessor() -> ColumnTransformer:
     """
     Preprocessor for the baseline model.
-    Combines education categoricals and experience numerics
+    Combines education categoricals and experience numerics.
     """
     ordinal_cols = ["EdLevel"]
-    onehot_cols = [c for c in EDUCATION_FEATURES
-                   if c in CATEGORICAL_COLS and c not in ordinal_cols]
+    onehot_cols  = [c for c in EDUCATION_FEATURES
+                    if c in CATEGORICAL_COLS and c not in ordinal_cols]
     numeric_cols = EXPERIENCE_FEATURES
 
     return ColumnTransformer(
@@ -295,6 +316,8 @@ def _baseline_preprocessor() -> ColumnTransformer:
         ],
         remainder="drop",
     )
+
+
 # Map group names to their preprocessor factory functions
 _PREPROCESSOR_MAP = {
     "education":  _education_preprocessor,
@@ -304,7 +327,8 @@ _PREPROCESSOR_MAP = {
     "baseline":   _baseline_preprocessor,
 }
 
-def build_pipeline(model, feature_group: str) -> Pipeline:
+
+def build_pipeline(model, feature_group: str, skills_kind: str = "embeddings") -> Pipeline:
     """
     Build a full sklearn Pipeline: preprocessor → model.
 
@@ -313,6 +337,14 @@ def build_pipeline(model, feature_group: str) -> Pipeline:
     Fitting the Pipeline on X_train automatically fits the preprocessor
     on training data only, no leakage into val/test.
 
+    Parameters
+    ----------
+    model          : any sklearn-compatible estimator
+    feature_group  : one of 'education', 'experience', 'skills',
+                     'combined', 'baseline'
+    skills_kind    : only used when feature_group == 'skills'.
+                     One of 'binary', 'counts', 'grouped', 'embeddings'.
+
     Example
     -------
     >>> from sklearn.linear_model import LogisticRegression
@@ -320,13 +352,15 @@ def build_pipeline(model, feature_group: str) -> Pipeline:
     >>> pipe.fit(X_train, y_train)
     >>> pipe.predict(X_val)
     """
-    if feature_group not in _PREPROCESSOR_MAP:
-        raise ValueError(
-            f"Unknown feature_group '{feature_group}'. "
-            f"Choose from: {list(_PREPROCESSOR_MAP.keys())}"
-        )
-
-    preprocessor = _PREPROCESSOR_MAP[feature_group]()
+    if feature_group == "skills":
+        preprocessor = _skills_preprocessor(skills_kind)
+    else:
+        if feature_group not in _PREPROCESSOR_MAP:
+            raise ValueError(
+                f"Unknown feature_group '{feature_group}'. "
+                f"Choose from: {list(_PREPROCESSOR_MAP.keys())}"
+            )
+        preprocessor = _PREPROCESSOR_MAP[feature_group]()
 
     pipeline = Pipeline(
         steps=[
@@ -336,9 +370,6 @@ def build_pipeline(model, feature_group: str) -> Pipeline:
     )
     return pipeline
 
-
-
-# 5. SANITY CHECK
 
 if __name__ == "__main__":
     print("Running data_utils.py sanity check")
@@ -361,13 +392,11 @@ if __name__ == "__main__":
     assert len(val_idx  & test_idx)  == 0, "OVERLAP between val and test!"
     print("[check] No index overlap between splits")
 
-    # Verify pipelines build without errors
     from sklearn.linear_model import LogisticRegression
     for group in ["education", "experience", "skills", "combined"]:
         pipe = build_pipeline(LogisticRegression(max_iter=200), group)
         pipe.fit(X_train, y_train)
         preds = pipe.predict(X_val)
         print(f"[check] '{group}' pipeline fitted and predicted {len(preds)} samples")
-
 
     print("All checks passed. data_utils.py is ready.")
