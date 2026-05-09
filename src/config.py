@@ -65,11 +65,9 @@ EXPERIENCE_FEATURES = [
 
 ]
 
-# Skills features — technology stack (will be parsed / vectorised by Jade)
-SKILLS_FEATURES = [
-    "HaveWorkedWith",   # semicolon-separated list of technologies
-    "ComputerSkills",   # count of distinct technologies (numeric)
-]
+# Skills features — technology stack
+SKILL_TEXT_COL = "HaveWorkedWith"      # raw semicolon-separated string
+SKILL_NUMERIC_COL = "ComputerSkills"   # count of distinct technologies
 
 
 # Categorical columns that need encoding in education and combined pipelines
