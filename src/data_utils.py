@@ -22,7 +22,8 @@ from config import (
     TEST_SIZE,
     EDUCATION_FEATURES,
     EXPERIENCE_FEATURES,
-    SKILLS_FEATURES,
+    SKILL_TEXT_COL,
+    SKILL_NUMERIC_COL,
     CATEGORICAL_COLS,
     NUMERIC_COLS,
     EDLEVEL_ORDER,
@@ -33,7 +34,7 @@ from config import (
 FEATURE_GROUPS = {
     "education":  EDUCATION_FEATURES,
     "experience": EXPERIENCE_FEATURES,
-    "skills":     SKILLS_FEATURES,
+    "skills":     [SKILL_TEXT_COL],
 }
 
 
