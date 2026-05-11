@@ -19,11 +19,13 @@ def run_combined_experiments():
     lr = build_pipeline(
         LogisticRegression(max_iter=1000, random_state=RANDOM_STATE),
         "combined",
+        skills_kind="embeddings",
     )
 
     gb = build_pipeline(
         GradientBoostingClassifier(random_state=RANDOM_STATE),
         "combined",
+        skills_kind="embeddings",
     )
 
     lr.fit(X_train, y_train)
