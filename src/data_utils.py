@@ -247,14 +247,11 @@ def _combined_preprocessor() -> ColumnTransformer:
     """
     Preprocessor for the combined model.
 
-    Combines all numeric and categorical columns from all feature groups,
-    excluding HaveWorkedWith.
+    Combines education, experience, and skills embeddings.
     """
     ordinal_cols = ["EdLevel"]
     numeric_cols = EXPERIENCE_FEATURES + ["ComputerSkills"]
-    onehot_cols  = (
-        [c for c in EDUCATION_FEATURES if c in CATEGORICAL_COLS and c != "EdLevel"]
-    )
+    onehot_cols = [c for c in EDUCATION_FEATURES if c in CATEGORICAL_COLS and c != "EdLevel"]
 
     return ColumnTransformer(
         transformers=[
@@ -276,6 +273,11 @@ def _combined_preprocessor() -> ColumnTransformer:
                 "onehot",
                 OneHotEncoder(handle_unknown="ignore", sparse_output=False),
                 onehot_cols,
+            ),
+            (
+                "skills",
+                _skills_preprocessor("embeddings"),
+                [SKILL_TEXT_COL],
             ),
         ],
         remainder="drop",
