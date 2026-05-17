@@ -1,35 +1,52 @@
-from sklearn.ensemble import GradientBoostingClassifier, RandomForestClassifier
+from sklearn.ensemble import GradientBoostingClassifier
 from sklearn.linear_model import LogisticRegression
 
 from config import RANDOM_STATE
 from data_utils import load_data, clean_data, get_split, build_pipeline
 
 
+def _safe_predict_and_score(model, X):
+    y_pred = model.predict(X)
+
+    if hasattr(model, "predict_proba"):
+        y_prob = model.predict_proba(X)[:, 1]
+    elif hasattr(model, "decision_function"):
+        y_prob = model.decision_function(X)
+    else:
+        y_prob = y_pred.astype(float)
+
+    return y_pred, y_prob
+
+
 def run_combined_experiments():
     """
-    Combined-model experiment:
-    - uses from preprocessing load + clean + split
-    - uses the shared 'combined' preprocessing pipeline
-    - trains Gradient Boosting as the main combined model
-    - also trains Logistic Regression
+    Combined-model experiment using embeddings, but with the combined
+    feature matrix precomputed once so embeddings are not recalculated
+    for every predict/predict_proba call.
     """
     df = clean_data(load_data())
     X_train, X_val, X_test, y_train, y_val, y_test = get_split(df)
 
-    lr = build_pipeline(
+    # Build a combined preprocessor from your existing pipeline helper
+    template_pipe = build_pipeline(
         LogisticRegression(max_iter=1000, random_state=RANDOM_STATE),
         "combined",
         skills_kind="embeddings",
     )
+    preprocessor = template_pipe.named_steps["preprocessor"]
 
-    gb = build_pipeline(
-        GradientBoostingClassifier(random_state=RANDOM_STATE),
-        "combined",
-        skills_kind="embeddings",
-    )
+    print("Fitting combined preprocessor...")
+    X_train_p = preprocessor.fit_transform(X_train, y_train)
+    X_val_p = preprocessor.transform(X_val)
+    X_test_p = preprocessor.transform(X_test)
 
-    lr.fit(X_train, y_train)
-    gb.fit(X_train, y_train)
+    print("Training combined LR...")
+    lr = LogisticRegression(max_iter=1000, random_state=RANDOM_STATE)
+    lr.fit(X_train_p, y_train)
+
+    print("Training combined GB...")
+    gb = GradientBoostingClassifier(random_state=RANDOM_STATE)
+    gb.fit(X_train_p, y_train)
 
     results = {
         "splits": {
@@ -39,33 +56,35 @@ def run_combined_experiments():
             "y_train": y_train,
             "y_val": y_val,
             "y_test": y_test,
+
         },
         "models": {
             "combined_lr": lr,
             "combined_gb": gb,
         },
-        "predictions": {
-            "combined_lr": {
-                "val_pred": lr.predict(X_val),
-                "val_prob": lr.predict_proba(X_val)[:, 1],
-                "test_pred": lr.predict(X_test),
-                "test_prob": lr.predict_proba(X_test)[:, 1],
-            },
-            "combined_gb": {
-                "val_pred": gb.predict(X_val),
-                "val_prob": gb.predict_proba(X_val)[:, 1],
-                "test_pred": gb.predict(X_test),
-                "test_prob": gb.predict_proba(X_test)[:, 1],
-            },
-        },
+        "predictions": {},
+        "preprocessor": preprocessor,
+        "X_train_p": X_train_p,
+        "X_val_p": X_val_p,
+        "X_test_p": X_test_p,
     }
+
+    for model_key, model in results["models"].items():
+        val_pred, val_prob = _safe_predict_and_score(model, X_val_p)
+        test_pred, test_prob = _safe_predict_and_score(model, X_test_p)
+
+        results["predictions"][model_key] = {
+            "val_pred": val_pred,
+            "val_prob": val_prob,
+            "test_pred": test_pred,
+            "test_prob": test_prob,
+        }
 
     print("Combined models trained successfully.")
     print("Ready for evaluation.")
 
     return results
 
+
 if __name__ == "__main__":
-    results = run_combined_experiments()
-    for model_name, preds in results["predictions"].items():
-        print(model_name, list(preds.keys()))
+    run_combined_experiments()
