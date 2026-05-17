@@ -1,52 +1,79 @@
-from sklearn.linear_model import LogisticRegression
 from sklearn.ensemble import RandomForestClassifier
+from sklearn.linear_model import LogisticRegression
 
+from config import RANDOM_STATE
 from data_utils import load_data, clean_data, get_split, build_pipeline
 
+
+def _safe_predict_and_score(model, X):
+    y_pred = model.predict(X)
+
+    if hasattr(model, "predict_proba"):
+        y_prob = model.predict_proba(X)[:, 1]
+    elif hasattr(model, "decision_function"):
+        y_prob = model.decision_function(X)
+    else:
+        y_prob = y_pred.astype(float)
+
+    return y_pred, y_prob
+
+
 def run_education_model():
-    df = load_data()
-    df = clean_data(df)
+    df = clean_data(load_data())
     X_train, X_val, X_test, y_train, y_val, y_test = get_split(df)
 
-    scores = {}
-
-# Logistic Regression
-    logistic_reg_model = LogisticRegression(max_iter=300, random_state=42)
-    logistic_reg_pipe = build_pipeline(logistic_reg_model, "education")
-    logistic_reg_pipe.fit(X_train, y_train)
-    logistic_reg_val_acc = logistic_reg_pipe.score(X_val, y_val)
-    logistic_reg_test_acc = logistic_reg_pipe.score(X_test, y_test)
-
-    scores["logistic_regression_education"] = {
-        "validation_accuracy": logistic_reg_val_acc,
-        "test_accuracy": logistic_reg_test_acc,
+    results = {
+        "splits": {
+            "X_train": X_train,
+            "X_val": X_val,
+            "X_test": X_test,
+            "y_train": y_train,
+            "y_val": y_val,
+            "y_test": y_test,
+        },
+        "models": {},
+        "predictions": {},
     }
 
-    print("validation_accuracy:", logistic_reg_val_acc)
-    print("test_accuracy:", logistic_reg_test_acc)
-
-# Random Forest
-    random_forest_education = RandomForestClassifier(
-        n_estimators=100,
-        random_state=42,
-        n_jobs=-1,
+    edu_lr = build_pipeline(
+        LogisticRegression(max_iter=1000, random_state=RANDOM_STATE),
+        "education",
     )
-    random_forest_pipe = build_pipeline(random_forest_education, "education")
-    random_forest_pipe.fit(X_train, y_train)
-    random_forest_validation_acc = random_forest_pipe.score(X_val, y_val)
-    random_forest_test_acc = random_forest_pipe.score(X_test, y_test)
 
-    scores["random_forest_education"] = {
-        "validation_accuracy": random_forest_validation_acc,
-        "test_accuracy": random_forest_test_acc,
-    }
+    edu_rf = build_pipeline(
+        RandomForestClassifier(
+            n_estimators=200,
+            random_state=RANDOM_STATE,
+            n_jobs=-1,
+        ),
+        "education",
+    )
 
-    print("validation_accuracy:", random_forest_validation_acc)
-    print("test_accuracy:", random_forest_test_acc)
+    edu_lr.fit(X_train, y_train)
+    edu_rf.fit(X_train, y_train)
 
-    return scores
+    for model_key, model in {
+        "education_lr": edu_lr,
+        "education_rf": edu_rf,
+    }.items():
+        val_pred, val_prob = _safe_predict_and_score(model, X_val)
+        test_pred, test_prob = _safe_predict_and_score(model, X_test)
 
-if __name__ == "__main__":
-    scores = run_education_model()
-    print("Final scores:")
-    print(scores)
+        results["models"][model_key] = model
+        results["predictions"][model_key] = {
+            "val_pred": val_pred,
+            "val_prob": val_prob,
+            "test_pred": test_pred,
+            "test_prob": test_prob,
+        }
+
+    print("Education models trained successfully.")
+    return results
+
+
+def main():
+    return run_education_model()
+
+
+if __name__ == "_main_":
+    main()
