@@ -4,6 +4,13 @@ This project investigates which feature groups are most predictive of employment
 
 ---
 
+# Project Deliverables
+
+- [Final Report](reports/Group_5_Report.pdf)
+- [Presentation Slides](slides/Group_5_Which_Features_Are_Most_Predictive_of_Hiring_Outcomes_.pdf)
+
+---
+
 # Team Members
 
 * Jade Beeks
